@@ -1,5 +1,6 @@
 #pragma once
 #include "RenderGraphDefinitions.h"
+#include "Graphics/RHI/RHI.h"
 #include "Graphics/RHI/Fence.h"
 #include "Graphics/RHI/CommandContext.h"
 #include "Blackboard.h"
@@ -180,13 +181,13 @@ public:
 	RGPass& DepthStencil(RGTexture* pResource, RenderTargetLoadAction depthAccess, bool write, RenderTargetLoadAction stencilAccess = RenderTargetLoadAction::NoAccess);
 
 private:
-	struct ResourceAccess
+	struct RGResourceAccess
 	{
 		RGResource* pResource;
-		D3D12_RESOURCE_STATES Access;
+		ResourceAccess Access;
 	};
 
-	void AddAccess(RGResource* pResource, D3D12_RESOURCE_STATES state);
+	void AddAccess(RGResource* pResource, ResourceAccess state);
 
 	char Name[128];
 	RGGraph& Graph;
@@ -197,7 +198,7 @@ private:
 	uint32 m_NumEventsToEnd = 0;
 	std::vector<std::string> m_EventsToStart;
 
-	std::vector<ResourceAccess> Accesses;
+	std::vector<RGResourceAccess> Accesses;
 	std::vector<RGPass*> PassDependencies;
 	std::vector<RenderTargetAccess> RenderTargets;
 	DepthStencilAccess DepthStencilTarget{};

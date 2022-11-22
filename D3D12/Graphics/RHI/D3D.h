@@ -10,56 +10,6 @@
 
 namespace D3D
 {
-	inline std::string ResourceStateToString(D3D12_RESOURCE_STATES state)
-	{
-		if (state == 0)
-		{
-			return "COMMON";
-		}
-
-		char outString[1024];
-		outString[0] = '\0';
-		char* pCurrent = outString;
-		int i = 0;
-		auto AddText = [&](const char* pText)
-		{
-			if (i++ > 0)
-				*pCurrent++ = '/';
-			strcpy_s(pCurrent, 1024 - (pCurrent - outString), pText);
-			size_t len = strlen(pText);
-			pCurrent += len;
-		};
-
-#define STATE_CASE(name) if((state & D3D12_RESOURCE_STATE_##name) == D3D12_RESOURCE_STATE_##name) { AddText(#name); state &= ~D3D12_RESOURCE_STATE_##name; }
-
-		STATE_CASE(GENERIC_READ);
-		STATE_CASE(VERTEX_AND_CONSTANT_BUFFER);
-		STATE_CASE(INDEX_BUFFER);
-		STATE_CASE(RENDER_TARGET);
-		STATE_CASE(UNORDERED_ACCESS);
-		STATE_CASE(DEPTH_WRITE);
-		STATE_CASE(DEPTH_READ);
-		STATE_CASE(ALL_SHADER_RESOURCE);
-		STATE_CASE(NON_PIXEL_SHADER_RESOURCE);
-		STATE_CASE(PIXEL_SHADER_RESOURCE);
-		STATE_CASE(STREAM_OUT);
-		STATE_CASE(INDIRECT_ARGUMENT);
-		STATE_CASE(COPY_DEST);
-		STATE_CASE(COPY_SOURCE);
-		STATE_CASE(RESOLVE_DEST);
-		STATE_CASE(RESOLVE_SOURCE);
-		STATE_CASE(RAYTRACING_ACCELERATION_STRUCTURE);
-		STATE_CASE(SHADING_RATE_SOURCE);
-		STATE_CASE(VIDEO_DECODE_READ);
-		STATE_CASE(VIDEO_DECODE_WRITE);
-		STATE_CASE(VIDEO_PROCESS_READ);
-		STATE_CASE(VIDEO_PROCESS_WRITE);
-		STATE_CASE(VIDEO_ENCODE_READ);
-		STATE_CASE(VIDEO_ENCODE_WRITE);
-#undef STATE_CASE
-		return outString;
-	}
-
 	constexpr const char* CommandlistTypeToString(D3D12_COMMAND_LIST_TYPE type)
 	{
 #define STATE_CASE(name) case D3D12_COMMAND_LIST_TYPE_##name: return #name
@@ -241,5 +191,150 @@ namespace D3D
 	constexpr DXGI_FORMAT ConvertFormat(ResourceFormat format)
 	{
 		return gDXGIFormatMap[(uint32)format];
+	}
+
+	inline void ResolveAccess(ResourceAccess inAccess, D3D12_BARRIER_ACCESS& outAccess, D3D12_BARRIER_SYNC& outSync, D3D12_BARRIER_LAYOUT& outLayout)
+	{
+		outAccess = D3D12_BARRIER_ACCESS_COMMON;
+		outSync = D3D12_BARRIER_SYNC_NONE;
+		outLayout = D3D12_BARRIER_LAYOUT_COMMON;
+
+		auto EnumHasAnyFlagsAndClear = [&](ResourceAccess& flags, ResourceAccess contains) {
+			bool checked = EnumHasAnyFlags(flags, contains);
+			flags &= ~contains;
+			return checked;
+		};
+
+		// Don't know? Stall everything!
+		if (inAccess == ResourceAccess::Unknown)
+		{
+			outAccess = D3D12_BARRIER_ACCESS_COMMON;
+			outSync = D3D12_BARRIER_SYNC_ALL;
+			outLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+			return;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::Present))
+		{
+			checkf(inAccess == ResourceAccess::Unknown, "Present state is not allowed to be combined.");
+			outAccess = D3D12_BARRIER_ACCESS_COMMON;
+			outSync = D3D12_BARRIER_SYNC_ALL;
+			outLayout = D3D12_BARRIER_LAYOUT_PRESENT;
+			return;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::RTV))
+		{
+			checkf(inAccess == ResourceAccess::Unknown, "RTV state is not allowed to be combined.");
+			outAccess = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+			outSync = D3D12_BARRIER_SYNC_RENDER_TARGET;
+			outLayout = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+			return;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::ResolveDest))
+		{
+			checkf(inAccess == ResourceAccess::Unknown, "ResolveDest state is not allowed to be combined.");
+			outAccess |= D3D12_BARRIER_ACCESS_RESOLVE_DEST;
+			outSync |= D3D12_BARRIER_SYNC_RESOLVE;
+			outLayout = D3D12_BARRIER_LAYOUT_RESOLVE_DEST;
+			return;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::CopyDest))
+		{
+			checkf(inAccess == ResourceAccess::Unknown, "CopyDest state is not allowed to be combined.");
+			outAccess |= D3D12_BARRIER_ACCESS_COPY_DEST;
+			outSync |= D3D12_BARRIER_SYNC_COPY;
+			outLayout = D3D12_BARRIER_LAYOUT_COPY_DEST;
+			return;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::AccelerationStructureWrite))
+		{
+			checkf(inAccess == ResourceAccess::Unknown, "AccelerationStructureWrite state is not allowed to be combined.");
+			outAccess |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE;
+			outSync |= D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
+			return;
+		}
+
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::DSVWrite))
+		{
+			outAccess = D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+			outSync = D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+			outLayout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+			return;
+		}
+
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::VertexBuffer))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_VERTEX_BUFFER;
+			outSync |= D3D12_BARRIER_SYNC_VERTEX_SHADING;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::IndexBuffer))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_INDEX_BUFFER;
+			outSync |= D3D12_BARRIER_SYNC_INDEX_INPUT;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::ConstantBuffer))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_CONSTANT_BUFFER;
+			outSync |= D3D12_BARRIER_SYNC_DRAW;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::SRVGraphics))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+			outSync |= D3D12_BARRIER_SYNC_ALL_SHADING;
+			outLayout = D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::SRVCompute))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+			outSync |= D3D12_BARRIER_SYNC_NON_PIXEL_SHADING;
+			outLayout = D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::CopySrc))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_COPY_SOURCE;
+			outSync |= D3D12_BARRIER_SYNC_COPY;
+			outLayout = D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::ResolveSrc))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_RESOLVE_SOURCE;
+			outSync |= D3D12_BARRIER_SYNC_RESOLVE;
+			outLayout = D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::DSVRead))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ;
+			outSync |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+			outLayout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::IndirectArgs))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT;
+			outSync |= D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::AccelerationStructureRead))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ;
+			outSync |= D3D12_BARRIER_SYNC_RAYTRACING;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::VRS))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE;
+			outSync |= D3D12_BARRIER_SYNC_ALL_SHADING;
+			outLayout = D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE;
+		}
+
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::UAV))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			outSync |= D3D12_BARRIER_SYNC_ALL_SHADING;
+			outLayout = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+		}
+		if (EnumHasAnyFlagsAndClear(inAccess, ResourceAccess::DSVWrite))
+		{
+			outAccess |= D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE;
+			outSync |= D3D12_BARRIER_SYNC_DEPTH_STENCIL;
+			outLayout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
+		}
+		checkf(inAccess == ResourceAccess::Unknown, "Following ResourceAccess flags are not accounted for: %s", RHI::ResourceStateToString(inAccess).c_str());
 	}
 }

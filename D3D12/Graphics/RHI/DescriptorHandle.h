@@ -44,8 +44,7 @@ public:
 		HeapIndex = InvalidHeapIndex;
 	}
 
-	bool IsNull() const { return CpuHandle == InvalidCPUHandle; }
-	bool IsShaderVisible() const { return GpuHandle != InvalidGPUHandle; }
+	bool IsValid() const { return CpuHandle == InvalidCPUHandle; }
 
 	constexpr static D3D12_CPU_DESCRIPTOR_HANDLE InvalidCPUHandle = { ~0u };
 	constexpr static D3D12_GPU_DESCRIPTOR_HANDLE InvalidGPUHandle = { ~0u };

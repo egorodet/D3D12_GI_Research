@@ -17,8 +17,6 @@ CommandContext::CommandContext(GraphicsDevice* pParent, RefCountPtr<ID3D12Comman
 {
 	m_pDynamicAllocator = std::make_unique<DynamicResourceAllocator>(pDynamicMemoryManager);
 	pCommandList.As(&m_pCommandList);
-	pCommandList.As(&m_pRaytracingCommandList);
-	pCommandList.As(&m_pMeshShadingCommandList);
 }
 
 void CommandContext::Reset()
@@ -86,56 +84,57 @@ void CommandContext::Free(const SyncPoint& syncPoint)
 	}
 }
 
-bool NeedsTransition(D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES& after)
-{
-	//Can read from 'write' DSV
-	if (before == D3D12_RESOURCE_STATE_DEPTH_WRITE && after == D3D12_RESOURCE_STATE_DEPTH_READ)
-	{
-		return false;
-	}
-	if (after == D3D12_RESOURCE_STATE_COMMON)
-	{
-		return before != D3D12_RESOURCE_STATE_COMMON;
-	}
-	//Combine already transitioned bits
-	if (ResourceState::CanCombineResourceState(before, after) && !EnumHasAllFlags(before, after))
-	{
-		after |= before;
-	}
-	return before != after;
-}
-
-void CommandContext::InsertResourceBarrier(GraphicsResource* pBuffer, D3D12_RESOURCE_STATES state, uint32 subResource /*= D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES*/)
+void CommandContext::BufferBarrier(Buffer* pBuffer, ResourceAccess state)
 {
 	check(pBuffer && pBuffer->GetResource());
-	checkf(IsTransitionAllowed(m_Type, state), "After state (%s) is not valid on this commandlist type (%s)", D3D::ResourceStateToString(state).c_str(), D3D::CommandlistTypeToString(m_Type));
 
 	ResourceState& resourceState = m_ResourceStates[pBuffer];
-	D3D12_RESOURCE_STATES beforeState = resourceState.Get(subResource);
-	if (beforeState == D3D12_RESOURCE_STATE_UNKNOWN)
+	ResourceAccess beforeState = resourceState.Get(D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	if (beforeState == ResourceAccess::Unknown)
 	{
-		resourceState.Set(state, subResource);
+		resourceState.Set(state, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 
 		PendingBarrier barrier;
 		barrier.pResource = pBuffer;
 		barrier.State = resourceState;
-		barrier.Subresource = subResource;
+		barrier.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barrier.Type = PendingBarrier::Type::Buffer;
 		m_PendingBarriers.push_back(barrier);
 	}
 	else
 	{
-		if (NeedsTransition(beforeState, state))
-		{
-			checkf(IsTransitionAllowed(m_Type, beforeState), "Current resource state (%s) is not valid to transition from in this commandlist type (%s)", D3D::ResourceStateToString(state).c_str(), D3D::CommandlistTypeToString(m_Type));
-			m_BarrierBatcher.AddTransition(pBuffer->GetResource(), beforeState, state, subResource);
-			resourceState.Set(state, subResource);
-		}
+		m_BarrierBatcher.BufferBarrier(pBuffer->GetResource(), beforeState, state);
+		resourceState.Set(state, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 	}
 }
 
-void CommandContext::InsertUavBarrier(const GraphicsResource* pBuffer /*= nullptr*/)
+void CommandContext::TextureBarrier(Texture* pTexture, ResourceAccess state, uint32 subResources)
 {
-	m_BarrierBatcher.AddUAV(pBuffer ? pBuffer->GetResource() : nullptr);
+	check(pTexture && pTexture->GetResource());
+
+	ResourceState& resourceState = m_ResourceStates[pTexture];
+	ResourceAccess beforeState = resourceState.Get(subResources);
+	if (beforeState == ResourceAccess::Unknown)
+	{
+		resourceState.Set(state, subResources);
+
+		PendingBarrier barrier;
+		barrier.pResource = pTexture;
+		barrier.State = resourceState;
+		barrier.Subresource = subResources;
+		barrier.Type = PendingBarrier::Type::Texture;
+		m_PendingBarriers.push_back(barrier);
+	}
+	else
+	{
+		m_BarrierBatcher.TextureBarrier(pTexture->GetResource(), beforeState, state, subResources);
+		resourceState.Set(state, subResources);
+	}
+}
+
+void CommandContext::UAVBarrier()
+{
+	m_BarrierBatcher.GlobalBarrier();
 }
 
 void CommandContext::FlushResourceBarriers()
@@ -162,7 +161,7 @@ void CommandContext::CopyTexture(const Texture* pSource, const Buffer* pTarget, 
 	textureFootprint.Footprint.Depth = sourceRegion.back - sourceRegion.front;
 	textureFootprint.Footprint.Height = sourceRegion.bottom - sourceRegion.top;
 	textureFootprint.Footprint.Format = D3D::ConvertFormat(pSource->GetFormat());
-	textureFootprint.Footprint.RowPitch = Math::AlignUp<uint32>(GetFormatByteSize(pSource->GetFormat(), textureFootprint.Footprint.Width), D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
+	textureFootprint.Footprint.RowPitch = Math::AlignUp<uint32>(RHI::GetFormatByteSize(pSource->GetFormat(), textureFootprint.Footprint.Width), D3D12_TEXTURE_DATA_PITCH_ALIGNMENT);
 
 	CD3DX12_TEXTURE_COPY_LOCATION srcLocation(pSource->GetResource(), sourceSubresource);
 	CD3DX12_TEXTURE_COPY_LOCATION dstLocation(pTarget->GetResource(), textureFootprint);
@@ -225,9 +224,8 @@ void CommandContext::DispatchMesh(uint32 groupCountX, uint32 groupCountY /*= 1*/
 {
 	check(m_pCurrentPSO && m_pCurrentPSO->GetType() == PipelineStateType::Mesh);
 	check(m_CurrentCommandContext == CommandListContext::Graphics);
-	check(m_pMeshShadingCommandList);
 	PrepareDraw();
-	m_pMeshShadingCommandList->DispatchMesh(groupCountX, groupCountY, groupCountZ);
+	m_pCommandList->DispatchMesh(groupCountX, groupCountY, groupCountZ);
 }
 
 void CommandContext::DispatchMesh(const Vector3i& groupCounts)
@@ -242,32 +240,35 @@ void CommandContext::ExecuteIndirect(const CommandSignature* pCommandSignature, 
 	m_pCommandList->ExecuteIndirect(pCommandSignature->GetCommandSignature(), maxCount, pIndirectArguments->GetResource(), argumentsOffset, pCountBuffer ? pCountBuffer->GetResource() : nullptr, countOffset);
 }
 
-void CommandContext::ClearUAVu(const GraphicsResource* pBuffer, const UnorderedAccessView* pUav, const Vector4u& values)
+void CommandContext::ClearUAVu(UnorderedAccessView* pUAV, const Vector4u& values)
 {
-	if (!pUav)
-		pUav = pBuffer->GetUAV();
-	check(pBuffer);
-	check(pUav);
-
-	DescriptorHandle gpuHandle = m_ShaderResourceDescriptorAllocator.Allocate(1);
-	GetParent()->GetDevice()->CopyDescriptorsSimple(1, gpuHandle.CpuHandle, pUav->GetDescriptor(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	FlushResourceBarriers();
-	m_pCommandList->ClearUnorderedAccessViewUint(gpuHandle.GpuHandle, pUav->GetDescriptor(), pBuffer->GetResource(), &values.x, 0, nullptr);
+	ClearUAV(pUAV, &values.x, false);
 }
 
-void CommandContext::ClearUAVf(const GraphicsResource* pBuffer, const UnorderedAccessView* pUav, const Vector4& values)
+void CommandContext::ClearUAVf(UnorderedAccessView* pUAV, const Vector4& values)
 {
-	if (!pUav)
-		pUav = pBuffer->GetUAV();
-	check(pBuffer);
-	check(pUav);
+	ClearUAV(pUAV, &values.x, true);
+}
 
-	DescriptorHandle gpuHandle = m_ShaderResourceDescriptorAllocator.Allocate(1);
-	GetParent()->GetDevice()->CopyDescriptorsSimple(1, gpuHandle.CpuHandle, pUav->GetDescriptor(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+void CommandContext::ClearUAV(UnorderedAccessView* pUAV, const void* pValues, bool isFloat)
+{
+	check(pUAV);
+	DescriptorHandle gpuHandle = pUAV->GetGPUVisible();
+	if (!gpuHandle.IsValid())
+	{
+		gpuHandle = m_ShaderResourceDescriptorAllocator.Allocate(1);
+		GetParent()->GetDevice()->CopyDescriptorsSimple(1, gpuHandle.CpuHandle, pUAV->GetCPUVisible(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	}
 
 	FlushResourceBarriers();
-	m_pCommandList->ClearUnorderedAccessViewFloat(gpuHandle.GpuHandle, pUav->GetDescriptor(), pBuffer->GetResource(), &values.x, 0, nullptr);
+	if (isFloat)
+	{
+		m_pCommandList->ClearUnorderedAccessViewFloat(gpuHandle.GpuHandle, pUAV->GetCPUVisible(), pUAV->GetResource()->GetResource(), static_cast<const float*>(pValues), 0, nullptr);
+	}
+	else
+	{
+		m_pCommandList->ClearUnorderedAccessViewUint(gpuHandle.GpuHandle, pUAV->GetCPUVisible(), pUAV->GetResource()->GetResource(), static_cast<const uint32*>(pValues), 0, nullptr);
+	}
 }
 
 void CommandContext::SetComputeRootSignature(const RootSignature* pRootSignature)
@@ -346,7 +347,7 @@ void CommandContext::BindResources(uint32 rootIndex, const Span<const ResourceVi
 	for (uint32 i = 0; i < pViews.GetSize(); ++i)
 	{
 		checkf(pViews[i], "ResourceView bound to root index %d with offset %d is null", rootIndex, offset);
-		descriptors[i] = pViews[i]->GetDescriptor();
+		descriptors[i] = pViews[i]->GetCPUVisible();
 	}
 	BindResources(rootIndex, Span<D3D12_CPU_DESCRIPTOR_HANDLE>(descriptors.data(), pViews.GetSize()), offset);
 }
@@ -358,45 +359,17 @@ void CommandContext::BindResources(uint32 rootIndex, const Span<D3D12_CPU_DESCRI
 
 void CommandContext::SetShadingRate(D3D12_SHADING_RATE shadingRate /*= D3D12_SHADING_RATE_1X1*/)
 {
-	check(m_pMeshShadingCommandList);
-	m_pMeshShadingCommandList->RSSetShadingRate(shadingRate, nullptr);
+	m_pCommandList->RSSetShadingRate(shadingRate, nullptr);
 }
 
 void CommandContext::SetShadingRateImage(Texture* pTexture)
 {
-	check(m_pMeshShadingCommandList);
-	m_pMeshShadingCommandList->RSSetShadingRateImage(pTexture->GetResource());
+	m_pCommandList->RSSetShadingRateImage(pTexture->GetResource());
 }
 
 DynamicAllocation CommandContext::AllocateTransientMemory(uint64 size, uint32 alignment /*= 256*/)
 {
 	return m_pDynamicAllocator->Allocate(size, alignment);
-}
-
-bool CommandContext::IsTransitionAllowed(D3D12_COMMAND_LIST_TYPE commandlistType, D3D12_RESOURCE_STATES state)
-{
-	constexpr int VALID_COMPUTE_QUEUE_RESOURCE_STATES =
-		D3D12_RESOURCE_STATE_COMMON
-		| D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-		| D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-		| D3D12_RESOURCE_STATE_COPY_DEST
-		| D3D12_RESOURCE_STATE_COPY_SOURCE
-		| D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
-
-	constexpr int VALID_COPY_QUEUE_RESOURCE_STATES =
-		D3D12_RESOURCE_STATE_COMMON
-		| D3D12_RESOURCE_STATE_COPY_DEST
-		| D3D12_RESOURCE_STATE_COPY_SOURCE;
-
-	if (commandlistType == D3D12_COMMAND_LIST_TYPE_COMPUTE)
-	{
-		return (state & VALID_COMPUTE_QUEUE_RESOURCE_STATES) == state;
-	}
-	else if (commandlistType == D3D12_COMMAND_LIST_TYPE_COPY)
-	{
-		return (state & VALID_COPY_QUEUE_RESOURCE_STATES) == state;
-	}
-	return true;
 }
 
 void CommandContext::ResolvePendingBarriers(CommandContext& resolveContext)
@@ -405,12 +378,16 @@ void CommandContext::ResolvePendingBarriers(CommandContext& resolveContext)
 	{
 		uint32 subResource = pending.Subresource;
 		GraphicsResource* pResource = pending.pResource;
-		D3D12_RESOURCE_STATES beforeState = pResource->GetResourceState(subResource);
-		checkf(CommandContext::IsTransitionAllowed(m_Type, beforeState),
-			"Resource (%s) can not be transitioned from this state (%s) on this queue (%s). Insert a barrier on another queue before executing this one.",
-			pResource->GetName().c_str(), D3D::ResourceStateToString(beforeState).c_str(), D3D::CommandlistTypeToString(m_Type));
+		ResourceAccess beforeState = pResource->GetResourceState(subResource);
 
-		resolveContext.m_BarrierBatcher.AddTransition(pResource->GetResource(), beforeState, pending.State.Get(subResource), subResource);
+		if (pending.Type == PendingBarrier::Type::Texture)
+		{
+			resolveContext.m_BarrierBatcher.TextureBarrier(pResource->GetResource(), beforeState, pending.State.Get(subResource), subResource);
+		}
+		else
+		{
+			resolveContext.m_BarrierBatcher.BufferBarrier(pResource->GetResource(), beforeState, pending.State.Get(subResource));
+		}
 		pResource->SetResourceState(GetLocalResourceState(pending.pResource, subResource));
 	}
 	resolveContext.FlushResourceBarriers();
@@ -509,7 +486,7 @@ void CommandContext::BeginRenderPass(const RenderPassInfo& renderPassInfo)
 		if (renderTargetDescs[i].EndingAccess.Type == D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_RESOLVE)
 		{
 			checkf(data.ResolveTarget, "Expected ResolveTarget because ending access is 'Resolve'");
-			InsertResourceBarrier(data.ResolveTarget, D3D12_RESOURCE_STATE_RESOLVE_DEST);
+			TextureBarrier(data.ResolveTarget, ResourceAccess::ResolveDest);
 			renderTargetDescs[i].EndingAccess.Resolve.Format = D3D::ConvertFormat(data.Target->GetFormat());
 			renderTargetDescs[i].EndingAccess.Resolve.pDstResource = data.ResolveTarget->GetResource();
 			renderTargetDescs[i].EndingAccess.Resolve.pSrcResource = data.Target->GetResource();
@@ -533,7 +510,7 @@ void CommandContext::BeginRenderPass(const RenderPassInfo& renderPassInfo)
 	}
 
 	FlushResourceBarriers();
-	m_pRaytracingCommandList->BeginRenderPass(renderPassInfo.RenderTargetCount, renderTargetDescs.data(), renderPassInfo.DepthStencilTarget.Target ? &renderPassDepthStencilDesc : nullptr, renderPassFlags);
+	m_pCommandList->BeginRenderPass(renderPassInfo.RenderTargetCount, renderTargetDescs.data(), renderPassInfo.DepthStencilTarget.Target ? &renderPassDepthStencilDesc : nullptr, renderPassFlags);
 
 	m_InRenderPass = true;
 	m_CurrentRenderPassInfo = renderPassInfo;
@@ -559,7 +536,7 @@ void CommandContext::EndRenderPass()
 		return D3D12_RENDER_PASS_ENDING_ACCESS_TYPE_NO_ACCESS;
 	};
 
-	m_pRaytracingCommandList->EndRenderPass();
+	m_pCommandList->EndRenderPass();
 
 	for (uint32 i = 0; i < m_CurrentRenderPassInfo.RenderTargetCount; ++i)
 	{
@@ -594,14 +571,13 @@ void CommandContext::DispatchRays(ShaderBindingTable& table, uint32 width /*= 1*
 {
 	check(m_pCurrentSO);
 	check(m_CurrentCommandContext == CommandListContext::Compute);
-	check(m_pRaytracingCommandList);
 	D3D12_DISPATCH_RAYS_DESC desc{};
 	table.Commit(*this, desc);
 	desc.Width = width;
 	desc.Height = height;
 	desc.Depth = depth;
 	PrepareDraw();
-	m_pRaytracingCommandList->DispatchRays(&desc);
+	m_pCommandList->DispatchRays(&desc);
 }
 
 void CommandContext::ClearColor(D3D12_CPU_DESCRIPTOR_HANDLE rtv, const Color& color /*= Color(0.15f, 0.15f, 0.15f, 1.0f)*/)
@@ -639,11 +615,10 @@ void CommandContext::SetPipelineState(PipelineState* pPipelineState)
 
 void CommandContext::SetPipelineState(StateObject* pStateObject)
 {
-	check(m_pRaytracingCommandList);
 	if (m_pCurrentSO != pStateObject)
 	{
 		pStateObject->ConditionallyReload();
-		m_pRaytracingCommandList->SetPipelineState1(pStateObject->GetStateObject());
+		m_pCommandList->SetPipelineState1(pStateObject->GetStateObject());
 		m_pCurrentSO = pStateObject;
 	}
 }
@@ -727,53 +702,75 @@ void CommandContext::SetScissorRect(const FloatRect& rect)
 	m_pCommandList->RSSetScissorRects(1, &r);
 }
 
-void ResourceBarrierBatcher::AddTransition(ID3D12Resource* pResource, D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState, uint32 subResource)
+void ResourceBarrierBatcher::BufferBarrier(ID3D12Resource* pResource, ResourceAccess beforeState, ResourceAccess afterState)
 {
 	if (beforeState == afterState)
 	{
 		return;
 	}
-	if (m_QueuedBarriers.size())
+
+	CD3DX12_BUFFER_BARRIER bufferBarrier;
+	bufferBarrier.pResource = pResource;
+	D3D12_BARRIER_LAYOUT layout;
+	D3D::ResolveAccess(beforeState, bufferBarrier.AccessBefore, bufferBarrier.SyncBefore, layout);
+	D3D::ResolveAccess(afterState, bufferBarrier.AccessAfter, bufferBarrier.SyncAfter, layout);
+	m_BufferBarriers.push_back(bufferBarrier);
+}
+
+void ResourceBarrierBatcher::TextureBarrier(ID3D12Resource* pResource, ResourceAccess beforeState, ResourceAccess afterState, uint32 subResource)
+{
+	if (beforeState == afterState)
 	{
-		const D3D12_RESOURCE_BARRIER& last = m_QueuedBarriers.back();
-		if (last.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION
-			&& last.Transition.pResource == pResource
-			&& last.Transition.StateBefore == beforeState
-			&& last.Transition.StateAfter == afterState)
-		{
-			m_QueuedBarriers.pop_back();
-			return;
-		}
+		return;
 	}
-	m_QueuedBarriers.emplace_back(
-		CD3DX12_RESOURCE_BARRIER::Transition(pResource,
-			beforeState,
-			afterState,
-			subResource,
-			D3D12_RESOURCE_BARRIER_FLAG_NONE
-		)
-	);
+
+	CD3DX12_TEXTURE_BARRIER textureBarrier;
+	textureBarrier.pResource = pResource;
+	D3D::ResolveAccess(beforeState, textureBarrier.AccessBefore, textureBarrier.SyncBefore, textureBarrier.LayoutBefore);
+	D3D::ResolveAccess(afterState, textureBarrier.AccessAfter, textureBarrier.SyncAfter, textureBarrier.LayoutAfter);
+	m_TextureBarriers.push_back(textureBarrier);
 }
 
-void ResourceBarrierBatcher::AddUAV(ID3D12Resource* pResource)
+void ResourceBarrierBatcher::GlobalBarrier()
 {
-	m_QueuedBarriers.emplace_back(
-		CD3DX12_RESOURCE_BARRIER::UAV(pResource)
-	);
+	CD3DX12_GLOBAL_BARRIER globalBarrier;
+	D3D12_BARRIER_LAYOUT layout;
+	D3D::ResolveAccess(ResourceAccess::UAV, globalBarrier.AccessBefore, globalBarrier.SyncBefore, layout);
+	D3D::ResolveAccess(ResourceAccess::UAV, globalBarrier.AccessAfter, globalBarrier.SyncAfter, layout);
+	m_GlobalBarriers.push_back(globalBarrier);
 }
 
-void ResourceBarrierBatcher::Flush(ID3D12GraphicsCommandList* pCmdList)
+void ResourceBarrierBatcher::Flush(ID3D12GraphicsCommandList7* pCmdList)
 {
-	if (m_QueuedBarriers.size())
+	if (HasWork())
 	{
-		pCmdList->ResourceBarrier((uint32)m_QueuedBarriers.size(), m_QueuedBarriers.data());
+		uint32 groups = 0;
+		m_BarrierGroups[groups].NumBarriers = (uint32)m_BufferBarriers.size();
+		m_BarrierGroups[groups].Type = D3D12_BARRIER_TYPE_BUFFER;
+		m_BarrierGroups[groups].pBufferBarriers = m_BufferBarriers.data();
+		groups += m_BufferBarriers.empty() ? 0 : 1;
+
+		m_BarrierGroups[groups].NumBarriers = (uint32)m_TextureBarriers.size();
+		m_BarrierGroups[groups].Type = D3D12_BARRIER_TYPE_TEXTURE;
+		m_BarrierGroups[groups].pTextureBarriers = m_TextureBarriers.data();
+		groups += m_TextureBarriers.empty() ? 0 : 1;
+
+		m_BarrierGroups[groups].NumBarriers = (uint32)m_GlobalBarriers.size();
+		m_BarrierGroups[groups].Type = D3D12_BARRIER_TYPE_GLOBAL;
+		m_BarrierGroups[groups].pGlobalBarriers = m_GlobalBarriers.data();
+		groups += m_GlobalBarriers.empty() ? 0 : 1;
+
+		pCmdList->Barrier(groups, m_BarrierGroups.data());
+
 		Reset();
 	}
 }
 
 void ResourceBarrierBatcher::Reset()
 {
-	m_QueuedBarriers.clear();
+	m_BufferBarriers.clear();
+	m_TextureBarriers.clear();
+	m_GlobalBarriers.clear();
 }
 
 CommandSignature::CommandSignature(GraphicsDevice* pParent, ID3D12CommandSignature* pCmdSignature)

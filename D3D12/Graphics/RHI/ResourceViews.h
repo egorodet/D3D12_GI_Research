@@ -70,9 +70,9 @@ public:
 	ResourceView(GraphicsResource* pParent, D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptor, DescriptorHandle gpuDescriptor);
 	virtual ~ResourceView();
 	GraphicsResource* GetResource() const { return m_pResource; }
-	D3D12_CPU_DESCRIPTOR_HANDLE GetDescriptor() const { return m_Descriptor; }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetCPUVisible() const { return m_Descriptor; }
+	DescriptorHandle GetGPUVisible() const { return m_GpuDescriptor; }
 	uint32 GetHeapIndex() const { return m_GpuDescriptor.HeapIndex; }
-	uint64 GetGPUView() const { return m_GpuDescriptor.GpuHandle.ptr; }
 protected:
 	GraphicsResource* m_pResource = nullptr;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_Descriptor = {};

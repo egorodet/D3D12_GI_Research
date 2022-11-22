@@ -105,9 +105,9 @@ void GPUDrivenRenderer::Render(RGGraph& graph, const SceneView* pView, const Ras
 			.Write({ rasterContext.pMeshletCandidatesCounter, rasterContext.pOccludedInstancesCounter })
 			.Bind([=](CommandContext& context)
 				{
-					context.ClearUAVu(rasterContext.pMeshletCandidatesCounter->Get());
-					context.ClearUAVu(rasterContext.pOccludedInstancesCounter->Get());
-					context.InsertUavBarrier();
+					context.ClearUAVu(rasterContext.pMeshletCandidatesCounter->Get()->GetUAV());
+					context.ClearUAVu(rasterContext.pOccludedInstancesCounter->Get()->GetUAV());
+					context.UAVBarrier();
 				});
 
 		graph.AddPass("Cull Instances", RGPassFlag::Compute)
@@ -327,8 +327,8 @@ void GPUDrivenRenderer::BuildHZB(RGGraph& graph, RGTexture* pDepth, RGTexture* p
 		.Write({ pHZB, pSPDCounter })
 		.Bind([=](CommandContext& context)
 			{
-				context.ClearUAVu(pSPDCounter->Get());
-				context.InsertUavBarrier();
+				context.ClearUAVu(pSPDCounter->Get()->GetUAV());
+				context.UAVBarrier();
 
 				context.SetComputeRootSignature(m_pCommonRS);
 				context.SetPipelineState(m_pHZBCreatePSO);

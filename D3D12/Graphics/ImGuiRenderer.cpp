@@ -133,8 +133,8 @@ void ImGuiRenderer::Initialize(GraphicsDevice* pDevice, WindowHandle window)
 	CommandContext* pContext = pDevice->AllocateCommandContext();
 	D3D12_SUBRESOURCE_DATA data;
 	data.pData = pPixels;
-	data.RowPitch = GetFormatByteSize(ResourceFormat::RGBA8_UNORM, width);
-	data.SlicePitch = GetFormatByteSize(ResourceFormat::RGBA8_UNORM, width, height);
+	data.RowPitch = RHI::GetFormatByteSize(ResourceFormat::RGBA8_UNORM, width);
+	data.SlicePitch = RHI::GetFormatByteSize(ResourceFormat::RGBA8_UNORM, width, height);
 	pContext->WriteTexture(gFontTexture, data, 0);
 	pContext->Execute(true);
 
@@ -197,7 +197,7 @@ void ImGuiRenderer::Render(RGGraph& graph, RGTexture* pRenderTarget)
 						Texture* pTexture = (Texture*)pCmd->GetTexID();
 						if (pTexture)
 						{
-							context.InsertResourceBarrier(pTexture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+							context.TextureBarrier(pTexture, ResourceAccess::SRVGraphics);
 						}
 					}
 				}

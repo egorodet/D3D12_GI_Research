@@ -124,10 +124,10 @@ void GpuParticles::Simulate(RGGraph& graph, const SceneView* pView, RGTexture* p
 			{
 				m_ParticlesToSpawn += (float)g_EmitCount * Time::DeltaTime();
 
-				context.InsertResourceBarrier(m_pCountersBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-				context.InsertResourceBarrier(m_pAliveList1, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-				context.InsertResourceBarrier(m_pAliveList2, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-				context.InsertResourceBarrier(m_pParticleBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				context.BufferBarrier(m_pCountersBuffer, ResourceAccess::UAV);
+				context.BufferBarrier(m_pAliveList1, ResourceAccess::UAV);
+				context.BufferBarrier(m_pAliveList2, ResourceAccess::UAV);
+				context.BufferBarrier(m_pParticleBuffer, ResourceAccess::UAV);
 
 				context.SetComputeRootSignature(m_pSimulateRS);
 				context.SetPipelineState(m_pPrepareArgumentsPS);
@@ -154,7 +154,7 @@ void GpuParticles::Simulate(RGGraph& graph, const SceneView* pView, RGTexture* p
 					});
 
 				context.Dispatch(1);
-				context.InsertUavBarrier();
+				context.UAVBarrier();
 			});
 
 	graph.AddPass("Emit", RGPassFlag::Compute | RGPassFlag::NeverCull)
@@ -186,14 +186,14 @@ void GpuParticles::Simulate(RGGraph& graph, const SceneView* pView, RGTexture* p
 					});
 
 				context.ExecuteIndirect(GraphicsCommon::pIndirectDispatchSignature, 1, pIndirectArgs->Get(), nullptr, IndirectArgOffsets::Emit * sizeof(uint32));
-				context.InsertUavBarrier();
-			});
+				context.UAVBarrier();
+						});
 
-	graph.AddPass("Simulate", RGPassFlag::Compute | RGPassFlag::NeverCull)
-		.Read({ pDepth, pIndirectArgs })
-		.Bind([=](CommandContext& context)
-			{
-				context.SetComputeRootSignature(m_pSimulateRS);
+				graph.AddPass("Simulate", RGPassFlag::Compute | RGPassFlag::NeverCull)
+					.Read({ pDepth, pIndirectArgs })
+					.Bind([=](CommandContext& context)
+						{
+							context.SetComputeRootSignature(m_pSimulateRS);
 				context.SetPipelineState(m_pSimulatePS);
 
 				struct
@@ -219,7 +219,7 @@ void GpuParticles::Simulate(RGGraph& graph, const SceneView* pView, RGTexture* p
 					});
 
 				context.ExecuteIndirect(GraphicsCommon::pIndirectDispatchSignature, 1, pIndirectArgs->Get(), nullptr, IndirectArgOffsets::Simulate * sizeof(uint32));
-				context.InsertUavBarrier();
+				context.UAVBarrier();
 			});
 
 	graph.AddPass("Simulate End", RGPassFlag::Compute)
@@ -227,7 +227,7 @@ void GpuParticles::Simulate(RGGraph& graph, const SceneView* pView, RGTexture* p
 		.Write(pIndirectArgs)
 		.Bind([=](CommandContext& context)
 			{
-				context.InsertResourceBarrier(m_pCountersBuffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+				context.BufferBarrier(m_pCountersBuffer, ResourceAccess::SRVCompute);
 
 				context.SetComputeRootSignature(m_pSimulateRS);
 				context.SetPipelineState(m_pSimulateEndPS);
@@ -247,7 +247,7 @@ void GpuParticles::Simulate(RGGraph& graph, const SceneView* pView, RGTexture* p
 					});
 
 				context.Dispatch(1);
-				context.InsertUavBarrier();
+				context.UAVBarrier();
 			});
 
 	std::swap(m_pAliveList1, m_pAliveList2);
@@ -274,8 +274,8 @@ void GpuParticles::Render(RGGraph& graph, const SceneView* pView, SceneTextures&
 		.Bind([=](CommandContext& context, const RGPassResources& resources)
 			{
 				Texture* pTarget = sceneTextures.pColorTarget->Get();
-				context.InsertResourceBarrier(m_pParticleBuffer, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
-				context.InsertResourceBarrier(m_pAliveList1, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+				context.BufferBarrier(m_pParticleBuffer, ResourceAccess::SRVGraphics);
+				context.BufferBarrier(m_pAliveList1, ResourceAccess::SRVGraphics);
 
 				context.BeginRenderPass(resources.GetRenderPassInfo());
 

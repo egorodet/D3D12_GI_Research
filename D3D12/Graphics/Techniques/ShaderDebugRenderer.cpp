@@ -88,7 +88,7 @@ void ShaderDebugRenderer::Render(RGGraph& graph, const SceneView* pView, RGTextu
 		.Write({ pDrawArgs, pRenderData })
 		.Bind([=](CommandContext& context)
 			{
-				context.InsertUavBarrier();
+				context.UAVBarrier();
 
 				context.SetComputeRootSignature(m_pCommonRS);
 				context.SetPipelineState(m_pBuildIndirectDrawArgsPSO);
@@ -144,7 +144,7 @@ void ShaderDebugRenderer::Render(RGGraph& graph, const SceneView* pView, RGTextu
 					});
 				context.ExecuteIndirect(GraphicsCommon::pIndirectDrawSignature, 1, pDrawArgs->Get(), nullptr, sizeof(D3D12_DRAW_ARGUMENTS) * 0);
 
-				context.InsertResourceBarrier(pRenderData->Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				context.BufferBarrier(pRenderData->Get(), ResourceAccess::UAV);
 			});
 }
 
@@ -401,15 +401,15 @@ void ShaderDebugRenderer::BuildFontAtlas(CommandContext& context, const Vector2i
 		}
 
 		m_pGlyphData = context.GetParent()->CreateBuffer(BufferDesc::CreateStructured((uint32)glyphData.size(), sizeof(GlyphData)), "Glyph Data");
-		context.InsertResourceBarrier(m_pGlyphData, D3D12_RESOURCE_STATE_COPY_DEST);
+		context.BufferBarrier(m_pGlyphData, ResourceAccess::CopyDest);
 		context.WriteBuffer(m_pGlyphData, glyphData.data(), glyphData.size() * sizeof(GlyphData));
-		context.InsertResourceBarrier(m_pGlyphData, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+		context.BufferBarrier(m_pGlyphData, ResourceAccess::SRVGraphics);
 	}
 
 	{
 		m_pFontAtlas = context.GetParent()->CreateTexture(TextureDesc::Create2D(resolution.x, resolution.y, ResourceFormat::R8_UNORM, TextureFlag::UnorderedAccess), "Font Atlas");
-		context.InsertResourceBarrier(m_pFontAtlas, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		context.ClearUAVu(m_pFontAtlas, m_pFontAtlas->GetUAV(), TVector4<uint32>(0, 0, 0, 0xFFFFFFFF));
+		context.TextureBarrier(m_pFontAtlas, ResourceAccess::UAV);
+		context.ClearUAVu(m_pFontAtlas->GetUAV(), TVector4<uint32>(0, 0, 0, 0xFFFFFFFF));
 
 		context.SetComputeRootSignature(m_pCommonRS);
 		context.SetPipelineState(m_pRasterizeGlyphPSO);

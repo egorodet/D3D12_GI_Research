@@ -311,9 +311,9 @@ namespace GraphicsCommon
 			RefCountPtr<Texture> pTexture = pDevice->CreateTexture(desc, pName);
 			D3D12_SUBRESOURCE_DATA data;
 			data.pData = pData;
-			data.RowPitch = GetFormatByteSize(desc.Format, desc.Width);
+			data.RowPitch = RHI::GetFormatByteSize(desc.Format, desc.Width);
 			data.SlicePitch = data.RowPitch * desc.Width;
-			context.InsertResourceBarrier(pTexture, D3D12_RESOURCE_STATE_COPY_DEST);
+			context.TextureBarrier(pTexture, ResourceAccess::CopyDest);
 			context.FlushResourceBarriers();
 			context.WriteTexture(pTexture, data, 0);
 			DefaultTextures[(int)type] = pTexture;
@@ -386,7 +386,7 @@ namespace GraphicsCommon
 		desc.Mips = image.GetMipLevels();
 		desc.Usage = TextureFlag::ShaderResource;
 		desc.Dimensions = image.IsCubemap() ? TextureDimension::TextureCube : TextureDimension::Texture2D;
-		if (GetFormatInfo(desc.Format).IsBC)
+		if (RHI::GetFormatInfo(desc.Format).IsBC)
 		{
 			desc.Width = Math::Max(desc.Width, 4u);
 			desc.Height = Math::Max(desc.Height, 4u);

@@ -335,9 +335,7 @@ GraphicsDevice::GraphicsDevice(GraphicsDeviceOptions options)
 	}
 
 	VERIFY_HR(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_pDevice.ReleaseAndGetAddressOf())));
-	check(m_pDevice.As(&m_pDevice4));
-	m_pDevice.As(&m_pRaytracingDevice);
-
+	check(m_pDevice.As(&m_pDevice));
 	D3D::SetObjectName(m_pDevice.Get(), "Main Device");
 
 	m_Capabilities.Initialize(this);
@@ -454,7 +452,7 @@ CommandContext* GraphicsDevice::AllocateCommandContext(D3D12_COMMAND_LIST_TYPE t
 		else
 		{
 			RefCountPtr<ID3D12CommandList> pCommandList;
-			VERIFY_HR(m_pDevice4->CreateCommandList1(0, type, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(pCommandList.GetAddressOf())));
+			VERIFY_HR(m_pDevice->CreateCommandList1(0, type, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(pCommandList.GetAddressOf())));
 			D3D::SetObjectName(pCommandList.Get(), Sprintf("Pooled %s Commandlist %d", D3D::CommandlistTypeToString(type), m_CommandListPool[typeIndex].size()).c_str());
 			pContext = m_CommandListPool[typeIndex].emplace_back(new CommandContext(this, pCommandList, type, m_pGlobalViewHeap, m_pDynamicAllocationManager));
 		}
@@ -515,28 +513,28 @@ void GraphicsDevice::UnregisterGlobalResourceView(DescriptorHandle& handle)
 
 RefCountPtr<Texture> GraphicsDevice::CreateTexture(const TextureDesc& desc, const char* pName)
 {
-	auto GetResourceDesc = [](const TextureDesc& textureDesc)
+	auto GetResourceDesc = [](const TextureDesc& textureDesc) -> D3D12_RESOURCE_DESC1
 	{
-		const FormatInfo& info = GetFormatInfo(textureDesc.Format);
+		const FormatInfo& info = RHI::GetFormatInfo(textureDesc.Format);
 		uint32 width = info.IsBC ? Math::Clamp(textureDesc.Width, 0u, textureDesc.Width) : textureDesc.Width;
 		uint32 height = info.IsBC ? Math::Clamp(textureDesc.Height, 0u, textureDesc.Height) : textureDesc.Height;
-		D3D12_RESOURCE_DESC desc{};
+		D3D12_RESOURCE_DESC1 desc{};
 		switch (textureDesc.Dimensions)
 		{
 		case TextureDimension::Texture1D:
 		case TextureDimension::Texture1DArray:
-			desc = CD3DX12_RESOURCE_DESC::Tex1D(D3D::ConvertFormat(textureDesc.Format), width, (uint16)textureDesc.DepthOrArraySize, (uint16)textureDesc.Mips, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
+			desc = CD3DX12_RESOURCE_DESC1::Tex1D(D3D::ConvertFormat(textureDesc.Format), width, (uint16)textureDesc.DepthOrArraySize, (uint16)textureDesc.Mips, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
 			break;
 		case TextureDimension::Texture2D:
 		case TextureDimension::Texture2DArray:
-			desc = CD3DX12_RESOURCE_DESC::Tex2D(D3D::ConvertFormat(textureDesc.Format), width, height, (uint16)textureDesc.DepthOrArraySize, (uint16)textureDesc.Mips, textureDesc.SampleCount, 0, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
+			desc = CD3DX12_RESOURCE_DESC1::Tex2D(D3D::ConvertFormat(textureDesc.Format), width, height, (uint16)textureDesc.DepthOrArraySize, (uint16)textureDesc.Mips, textureDesc.SampleCount, 0, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
 			break;
 		case TextureDimension::TextureCube:
 		case TextureDimension::TextureCubeArray:
-			desc = CD3DX12_RESOURCE_DESC::Tex2D(D3D::ConvertFormat(textureDesc.Format), width, height, (uint16)textureDesc.DepthOrArraySize * 6, (uint16)textureDesc.Mips, textureDesc.SampleCount, 0, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
+			desc = CD3DX12_RESOURCE_DESC1::Tex2D(D3D::ConvertFormat(textureDesc.Format), width, height, (uint16)textureDesc.DepthOrArraySize * 6, (uint16)textureDesc.Mips, textureDesc.SampleCount, 0, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
 			break;
 		case TextureDimension::Texture3D:
-			desc = CD3DX12_RESOURCE_DESC::Tex3D(D3D::ConvertFormat(textureDesc.Format), width, height, (uint16)textureDesc.DepthOrArraySize, (uint16)textureDesc.Mips, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
+			desc = CD3DX12_RESOURCE_DESC1::Tex3D(D3D::ConvertFormat(textureDesc.Format), width, height, (uint16)textureDesc.DepthOrArraySize, (uint16)textureDesc.Mips, D3D12_RESOURCE_FLAG_NONE, D3D12_TEXTURE_LAYOUT_UNKNOWN);
 			break;
 		default:
 			noEntry();
@@ -556,26 +554,24 @@ RefCountPtr<Texture> GraphicsDevice::CreateTexture(const TextureDesc& desc, cons
 			desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 			if (!EnumHasAnyFlags(textureDesc.Usage, TextureFlag::ShaderResource))
 			{
-				//I think this can be a significant optimization on some devices because then the depth buffer can never be (de)compressed
 				desc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
 			}
 		}
 		return desc;
 	};
 
-	D3D12_RESOURCE_STATES resourceState = D3D12_RESOURCE_STATE_COMMON;
-	TextureFlag depthAndRt = TextureFlag::RenderTarget | TextureFlag::DepthStencil;
-	check(EnumHasAllFlags(desc.Usage, depthAndRt) == false);
+	check(EnumHasAllFlags(desc.Usage, TextureFlag::RenderTarget | TextureFlag::DepthStencil) == false);
 
 	D3D12_CLEAR_VALUE* pClearValue = nullptr;
 	D3D12_CLEAR_VALUE clearValue = {};
 	clearValue.Format = D3D::ConvertFormat(desc.Format);
 
+	D3D12_BARRIER_LAYOUT initialLayout = D3D12_BARRIER_LAYOUT_COMMON;
 	if (EnumHasAnyFlags(desc.Usage, TextureFlag::RenderTarget))
 	{
 		check(desc.ClearBindingValue.BindingValue == ClearBinding::ClearBindingValue::Color);
 		memcpy(&clearValue.Color, &desc.ClearBindingValue.Color, sizeof(Color));
-		resourceState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		initialLayout = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
 		pClearValue = &clearValue;
 	}
 	if (EnumHasAnyFlags(desc.Usage, TextureFlag::DepthStencil))
@@ -583,18 +579,16 @@ RefCountPtr<Texture> GraphicsDevice::CreateTexture(const TextureDesc& desc, cons
 		check(desc.ClearBindingValue.BindingValue == ClearBinding::ClearBindingValue::DepthStencil);
 		clearValue.DepthStencil.Depth = desc.ClearBindingValue.DepthStencil.Depth;
 		clearValue.DepthStencil.Stencil = desc.ClearBindingValue.DepthStencil.Stencil;
-		resourceState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		initialLayout = D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE;
 		pClearValue = &clearValue;
 	}
 
-	D3D12_RESOURCE_DESC resourceDesc = GetResourceDesc(desc);
-
 	ID3D12Resource* pResource;
 	D3D12_HEAP_PROPERTIES properties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-	VERIFY_HR_EX(m_pDevice->CreateCommittedResource(&properties, D3D12_HEAP_FLAG_NONE, &resourceDesc, resourceState, pClearValue, IID_PPV_ARGS(&pResource)), m_pDevice);
+	D3D12_RESOURCE_DESC1 resourceDesc = GetResourceDesc(desc);
+	VERIFY_HR_EX(m_pDevice->CreateCommittedResource3(&properties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialLayout, pClearValue, nullptr, 0, nullptr, IID_PPV_ARGS(&pResource)), m_pDevice);
 
 	Texture* pTexture = new Texture(this, desc, pResource);
-	pTexture->SetResourceState(resourceState);
 	pTexture->SetName(pName);
 
 	if (EnumHasAnyFlags(desc.Usage, TextureFlag::ShaderResource))
@@ -655,7 +649,7 @@ RefCountPtr<Texture> GraphicsDevice::CreateTexture(const TextureDesc& desc, cons
 		pTexture->m_ReadOnlyDsv = GetParent()->AllocateCPUDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-		dsvDesc.Format = D3D::ConvertFormat(DSVFormat(desc.Format));
+		dsvDesc.Format = D3D::ConvertFormat(RHI::DSVFormat(desc.Format));
 		switch (desc.Dimensions)
 		{
 		case TextureDimension::Texture1D:
@@ -712,7 +706,6 @@ RefCountPtr<Texture> GraphicsDevice::CreateTextureForSwapchain(ID3D12Resource* p
 	Texture* pTexture = new Texture(this, desc, pSwapchainResource);
 	pTexture->SetImmediateDelete(true);
 	pTexture->SetName("Backbuffer");
-	pTexture->SetResourceState(D3D12_RESOURCE_STATE_PRESENT);
 
 	pTexture->m_Rtv = GetParent()->AllocateCPUDescriptor(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	GetParent()->GetDevice()->CreateRenderTargetView(pSwapchainResource, nullptr, pTexture->m_Rtv);
@@ -722,9 +715,9 @@ RefCountPtr<Texture> GraphicsDevice::CreateTextureForSwapchain(ID3D12Resource* p
 
 RefCountPtr<Buffer> GraphicsDevice::CreateBuffer(const BufferDesc& desc, const char* pName)
 {
-	auto GetResourceDesc = [](const BufferDesc& bufferDesc)
+	auto GetResourceDesc = [](const BufferDesc& bufferDesc) -> D3D12_RESOURCE_DESC1
 	{
-		D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size, D3D12_RESOURCE_FLAG_NONE);
+		D3D12_RESOURCE_DESC1 desc = CD3DX12_RESOURCE_DESC1::Buffer(bufferDesc.Size, D3D12_RESOURCE_FLAG_NONE);
 		if (EnumHasAnyFlags(bufferDesc.Usage, BufferFlag::ShaderResource | BufferFlag::AccelerationStructure) == false)
 		{
 			desc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
@@ -733,42 +726,29 @@ RefCountPtr<Buffer> GraphicsDevice::CreateBuffer(const BufferDesc& desc, const c
 		{
 			desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 		}
+		if (EnumHasAnyFlags(bufferDesc.Usage, BufferFlag::AccelerationStructure))
+		{
+			desc.Flags |= D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE;
+		}
 		return desc;
 	};
 
-	D3D12_RESOURCE_DESC resourceDesc = GetResourceDesc(desc);
 	D3D12_HEAP_TYPE heapType = D3D12_HEAP_TYPE_DEFAULT;
-	D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_UNKNOWN;
-
 	if (EnumHasAnyFlags(desc.Usage, BufferFlag::Readback))
 	{
-		check(initialState == D3D12_RESOURCE_STATE_UNKNOWN);
-		initialState = D3D12_RESOURCE_STATE_COPY_DEST;
 		heapType = D3D12_HEAP_TYPE_READBACK;
 	}
 	if (EnumHasAnyFlags(desc.Usage, BufferFlag::Upload))
 	{
-		check(initialState == D3D12_RESOURCE_STATE_UNKNOWN);
-		initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
 		heapType = D3D12_HEAP_TYPE_UPLOAD;
-	}
-	if (EnumHasAnyFlags(desc.Usage, BufferFlag::AccelerationStructure))
-	{
-		check(initialState == D3D12_RESOURCE_STATE_UNKNOWN);
-		initialState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-	}
-
-	if (initialState == D3D12_RESOURCE_STATE_UNKNOWN)
-	{
-		initialState = D3D12_RESOURCE_STATE_COMMON;
 	}
 
 	ID3D12Resource* pResource;
 	D3D12_HEAP_PROPERTIES properties = CD3DX12_HEAP_PROPERTIES(heapType);
-	VERIFY_HR_EX(m_pDevice->CreateCommittedResource(&properties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr, IID_PPV_ARGS(&pResource)), m_pDevice);
+	D3D12_RESOURCE_DESC1 resourceDesc = GetResourceDesc(desc);
+	VERIFY_HR_EX(m_pDevice->CreateCommittedResource3(&properties, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, nullptr, 0, nullptr, IID_PPV_ARGS(&pResource)), m_pDevice);
 
 	Buffer* pBuffer = new Buffer(this, desc, pResource);
-	pBuffer->SetResourceState(initialState);
 	pBuffer->SetName(pName);
 
 	if (EnumHasAnyFlags(desc.Usage, BufferFlag::Upload | BufferFlag::Readback))
@@ -909,7 +889,7 @@ RefCountPtr<ShaderResourceView> GraphicsDevice::CreateSRV(Texture* pTexture, con
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = D3D::ConvertFormat(SRVFormatFromDepth(textureDesc.Format));
+	srvDesc.Format = D3D::ConvertFormat(RHI::SRVFormatFromDepth(textureDesc.Format));
 
 	switch (textureDesc.Dimensions)
 	{
@@ -1089,6 +1069,7 @@ void GraphicsCapabilities::Initialize(GraphicsDevice* pDevice)
 	checkf(m_FeatureSupport.ResourceBindingTier() >= D3D12_RESOURCE_BINDING_TIER_3, "Device does not support Resource Binding Tier 3 or higher. Tier 2 and under is not supported.");
 	checkf(m_FeatureSupport.HighestShaderModel() >= D3D_SHADER_MODEL_6_6, "Device does not support SM 6.6 which is required for dynamic indexing");
 	checkf(m_FeatureSupport.WaveOps(), "Device does not support wave ops which is required.");
+	checkf(m_FeatureSupport.EnhancedBarriersSupported(), "Device does not support Enhanced Barriers.")
 
 	RenderPassTier = m_FeatureSupport.RenderPassesTier();
 	RayTracingTier = m_FeatureSupport.RaytracingTier();

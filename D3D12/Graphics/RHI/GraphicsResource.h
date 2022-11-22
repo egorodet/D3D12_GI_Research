@@ -36,23 +36,21 @@ private:
 	GraphicsDevice* m_pParent;
 };
 
-constexpr D3D12_RESOURCE_STATES D3D12_RESOURCE_STATE_UNKNOWN = (D3D12_RESOURCE_STATES)-1;
-
 class ResourceState
 {
 public:
-	ResourceState(D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_UNKNOWN)
+	ResourceState(ResourceAccess initialState = ResourceAccess::Unknown)
 		: m_CommonState(initialState), m_AllSameState(true)
 	{}
 
-	void Set(D3D12_RESOURCE_STATES state, uint32 subResource)
+	void Set(ResourceAccess state, uint32 subResource)
 	{
 		if (subResource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES)
 		{
 			check(subResource < m_ResourceStates.size());
 			if (m_AllSameState)
 			{
-				for (D3D12_RESOURCE_STATES& s : m_ResourceStates)
+				for (ResourceAccess& s : m_ResourceStates)
 				{
 					s = m_CommonState;
 				}
@@ -66,7 +64,7 @@ public:
 			m_CommonState = state;
 		}
 	}
-	D3D12_RESOURCE_STATES Get(uint32 subResource) const
+	ResourceAccess Get(uint32 subResource) const
 	{
 		if (m_AllSameState)
 		{
@@ -79,29 +77,19 @@ public:
 		}
 	}
 
-	static bool HasWriteResourceState(D3D12_RESOURCE_STATES state)
+	static bool HasWriteResourceState(ResourceAccess state)
 	{
-		return EnumHasAnyFlags(state,
-			D3D12_RESOURCE_STATE_STREAM_OUT |
-			D3D12_RESOURCE_STATE_UNORDERED_ACCESS |
-			D3D12_RESOURCE_STATE_RENDER_TARGET |
-			D3D12_RESOURCE_STATE_DEPTH_WRITE |
-			D3D12_RESOURCE_STATE_COPY_DEST |
-			D3D12_RESOURCE_STATE_RESOLVE_DEST |
-			D3D12_RESOURCE_STATE_VIDEO_DECODE_WRITE |
-			D3D12_RESOURCE_STATE_VIDEO_PROCESS_WRITE |
-			D3D12_RESOURCE_STATE_VIDEO_ENCODE_WRITE
-		);
+		return EnumHasAnyFlags(state, ResourceAccess::WriteMask);
 	};
 
-	static bool CanCombineResourceState(D3D12_RESOURCE_STATES stateA, D3D12_RESOURCE_STATES stateB)
+	static bool CanCombineResourceState(ResourceAccess stateA, ResourceAccess stateB)
 	{
 		return !HasWriteResourceState(stateA) && !HasWriteResourceState(stateB);
 	}
 
 private:
-	std::array<D3D12_RESOURCE_STATES, D3D12_REQ_MIP_LEVELS> m_ResourceStates{};
-	D3D12_RESOURCE_STATES m_CommonState;
+	std::array<ResourceAccess, D3D12_REQ_MIP_LEVELS> m_ResourceStates{};
+	ResourceAccess m_CommonState;
 	bool m_AllSameState;
 };
 
@@ -128,8 +116,8 @@ public:
 	inline ID3D12Resource* GetResource() const { return m_pResource; }
 	inline D3D12_GPU_VIRTUAL_ADDRESS GetGpuHandle() const { return m_pResource->GetGPUVirtualAddress(); }
 
-	void SetResourceState(D3D12_RESOURCE_STATES state, uint32 subResource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) { m_ResourceState.Set(state, subResource); }
-	inline D3D12_RESOURCE_STATES GetResourceState(uint32 subResource = 0) const { return m_ResourceState.Get(subResource); }
+	void SetResourceState(ResourceAccess state, uint32 subResource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) { m_ResourceState.Set(state, subResource); }
+	inline ResourceAccess GetResourceState(uint32 subResource = 0) const { return m_ResourceState.Get(subResource); }
 
 protected:
 	std::string m_Name;

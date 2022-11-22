@@ -128,7 +128,7 @@ void CBTTessellation::Execute(RGGraph& graph, CBTData& data, const SceneView* pV
 				{
 					CBT cbt;
 					cbt.InitBare(CBTSettings::CBTDepth, 1);
-					context.InsertResourceBarrier(pCBTBuffer->Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+					context.BufferBarrier(pCBTBuffer->Get(), ResourceAccess::CopyDest);
 					context.WriteBuffer(pCBTBuffer->Get(), cbt.GetData(), size);
 				});
 	}
@@ -177,7 +177,7 @@ void CBTTessellation::Execute(RGGraph& graph, CBTData& data, const SceneView* pV
 
 				context.SetPipelineState(m_pCBTUpdatePSO);
 				context.ExecuteIndirect(GraphicsCommon::pIndirectDispatchSignature, 1, pIndirectArgs->Get(), nullptr, IndirectDispatchArgsOffset);
-				context.InsertUavBarrier(pCBTBuffer->Get());
+				context.UAVBarrier();
 			});
 	}
 
@@ -241,7 +241,7 @@ void CBTTessellation::Execute(RGGraph& graph, CBTData& data, const SceneView* pV
 
 				context.SetPipelineState(m_pCBTSumReductionFirstPassPSO);
 				context.Dispatch(ComputeUtils::GetNumThreadGroups(1u << currentDepth, 256 * 32));
-				context.InsertUavBarrier(m_pCBTBuffer);
+				context.UAVBarrier(m_pCBTBuffer);
 			});
 #endif
 
@@ -290,7 +290,7 @@ void CBTTessellation::Execute(RGGraph& graph, CBTData& data, const SceneView* pV
 
 					context.SetPipelineState(m_pCBTSumReductionPSO);
 					context.Dispatch(ComputeUtils::GetNumThreadGroups(1 << currentDepth, 256));
-					context.InsertUavBarrier(pCBTBuffer->Get());
+					context.UAVBarrier();
 				}
 			});
 
@@ -305,7 +305,7 @@ void CBTTessellation::Execute(RGGraph& graph, CBTData& data, const SceneView* pV
 			.Read({ pCBTBuffer, pIndirectArgs })
 			.Bind([=](CommandContext& context, const RGPassResources& resources)
 			{
-				context.InsertResourceBarrier(data.pDebugVisualizeTexture, D3D12_RESOURCE_STATE_RENDER_TARGET);
+				context.TextureBarrier(data.pDebugVisualizeTexture, ResourceAccess::RTV);
 
 				context.BeginRenderPass(RenderPassInfo(data.pDebugVisualizeTexture, RenderPassAccess::Load_Store, nullptr, RenderPassAccess::NoAccess, false));
 

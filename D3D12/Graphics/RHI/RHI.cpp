@@ -86,39 +86,42 @@ constexpr bool TestEnumValues()
 }
 static_assert(TestEnumValues());
 
-const FormatInfo& GetFormatInfo(ResourceFormat format)
+namespace RHI
 {
-	const FormatInfo& info = sFormatInfo[(uint32)format];
-	check(info.Format == format);
-	return info;
-}
-
-const uint32 GetFormatByteSize(ResourceFormat format, uint32 width, uint32 height, uint32 depth)
-{
-	const FormatInfo& info = GetFormatInfo(format);
-	if(info.BlockSize > 0)
-		return (width / info.BlockSize) * (height / info.BlockSize) * depth * info.BytesPerBlock;
-	return 0;
-}
-
-ResourceFormat SRVFormatFromDepth(ResourceFormat format)
-{
-	switch (format)
+	const FormatInfo& GetFormatInfo(ResourceFormat format)
 	{
-	case ResourceFormat::D32S8:			return ResourceFormat::R32_FLOAT;
-	case ResourceFormat::D32_FLOAT:		return ResourceFormat::R32_FLOAT;
-	case ResourceFormat::D24S8:			return ResourceFormat::D24S8;
-	case ResourceFormat::D16_UNORM:		return ResourceFormat::R16_UNORM;
+		const FormatInfo& info = sFormatInfo[(uint32)format];
+		check(info.Format == format);
+		return info;
 	}
-	return format;
-}
 
-ResourceFormat DSVFormat(ResourceFormat format)
-{
-	switch (format)
+	const uint32 GetFormatByteSize(ResourceFormat format, uint32 width, uint32 height, uint32 depth)
 	{
-	case ResourceFormat::R32_FLOAT:		return ResourceFormat::D32_FLOAT;
-	case ResourceFormat::R16_UNORM:		return ResourceFormat::D16_UNORM;
+		const FormatInfo& info = GetFormatInfo(format);
+		if (info.BlockSize > 0)
+			return (width / info.BlockSize) * (height / info.BlockSize) * depth * info.BytesPerBlock;
+		return 0;
 	}
-	return format;
+
+	ResourceFormat SRVFormatFromDepth(ResourceFormat format)
+	{
+		switch (format)
+		{
+		case ResourceFormat::D32S8:			return ResourceFormat::R32_FLOAT;
+		case ResourceFormat::D32_FLOAT:		return ResourceFormat::R32_FLOAT;
+		case ResourceFormat::D24S8:			return ResourceFormat::D24S8;
+		case ResourceFormat::D16_UNORM:		return ResourceFormat::R16_UNORM;
+		}
+		return format;
+	}
+
+	ResourceFormat DSVFormat(ResourceFormat format)
+	{
+		switch (format)
+		{
+		case ResourceFormat::R32_FLOAT:		return ResourceFormat::D32_FLOAT;
+		case ResourceFormat::R16_UNORM:		return ResourceFormat::D16_UNORM;
+		}
+		return format;
+	}
 }

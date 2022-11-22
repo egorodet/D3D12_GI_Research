@@ -105,10 +105,90 @@ struct FormatInfo
 	bool IsBC : 1;
 };
 
-const FormatInfo& GetFormatInfo(ResourceFormat format);
-const uint32 GetFormatByteSize(ResourceFormat format, uint32 width, uint32 height = 1, uint32 depth = 1);
-ResourceFormat SRVFormatFromDepth(ResourceFormat format);
-ResourceFormat DSVFormat(ResourceFormat format);
+enum class ResourceAccess
+{
+	Unknown = 0,
+
+	// Read-only states
+	VertexBuffer				= 1u << 0u,
+	ConstantBuffer				= 1u << 1u,
+	IndexBuffer					= 1u << 2u,
+	DSVRead						= 1u << 3u,
+	SRVGraphics					= 1u << 4u,
+	SRVCompute					= 1u << 5u,
+	CopySrc						= 1u << 6u,
+	IndirectArgs				= 1u << 7u,
+	ResolveSrc					= 1u << 8u,
+	AccelerationStructureRead	= 1u << 9u,
+	VRS							= 1u << 10u,
+	Present						= 1u << 11u,
+
+	// Read-write states
+	RTV							= 1u << 12u,
+	UAV							= 1u << 13u,
+	DSVWrite					= 1u << 14u,
+	CopyDest					= 1u << 15u,
+	ResolveDest					= 1u << 16u,
+	AccelerationStructureWrite	= 1u << 17u,
+
+	// Masks
+	SRVMask = SRVGraphics | SRVCompute,
+	ReadMask = VertexBuffer | ConstantBuffer | IndexBuffer | DSVRead | SRVGraphics | SRVCompute | CopySrc | IndirectArgs | ResolveSrc | AccelerationStructureRead | VRS,
+	WriteMask = RTV | UAV | DSVWrite | CopyDest | ResolveDest | AccelerationStructureWrite,
+};
+DECLARE_BITMASK_TYPE(ResourceAccess);
+
+namespace RHI
+{
+	inline std::string ResourceStateToString(ResourceAccess access)
+	{
+		if (access == ResourceAccess::Unknown)
+		{
+			return "Unknown";
+		}
+
+		char outString[1024];
+		outString[0] = '\0';
+		char* pCurrent = outString;
+		int i = 0;
+		auto AddText = [&](const char* pText)
+		{
+			if (i++ > 0)
+				*pCurrent++ = '/';
+			strcpy_s(pCurrent, 1024 - (pCurrent - outString), pText);
+			size_t len = strlen(pText);
+			pCurrent += len;
+		};
+
+#define STATE_CASE(name) if((access & ResourceAccess::name) == ResourceAccess::name) { AddText(#name); access &= ~ResourceAccess::name; }
+		STATE_CASE(VertexBuffer);
+		STATE_CASE(ConstantBuffer);
+		STATE_CASE(IndexBuffer);
+		STATE_CASE(DSVRead);
+		STATE_CASE(SRVGraphics);
+		STATE_CASE(SRVCompute);
+		STATE_CASE(CopySrc);
+		STATE_CASE(IndirectArgs);
+		STATE_CASE(ResolveSrc);
+		STATE_CASE(AccelerationStructureRead);
+		STATE_CASE(VRS);
+		STATE_CASE(RTV);
+		STATE_CASE(UAV);
+		STATE_CASE(DSVWrite);
+		STATE_CASE(CopyDest);
+		STATE_CASE(ResolveDest);
+		STATE_CASE(AccelerationStructureWrite);
+#undef STATE_CASE
+
+		checkf(access == ResourceAccess::Unknown, "Following ResourceAccess flags are not accounted for: %s", RHI::ResourceStateToString(access).c_str());
+		return outString;
+	}
+
+	const FormatInfo& GetFormatInfo(ResourceFormat format);
+	const uint32 GetFormatByteSize(ResourceFormat format, uint32 width, uint32 height = 1, uint32 depth = 1);
+	ResourceFormat SRVFormatFromDepth(ResourceFormat format);
+	ResourceFormat DSVFormat(ResourceFormat format);
+}
 
 template<bool ThreadSafe>
 struct FreeList

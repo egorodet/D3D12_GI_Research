@@ -220,7 +220,7 @@ void ClusteredForward::ComputeLightCulling(RGGraph& graph, const SceneView* pVie
 				// Clear the light grid because we're accumulating the light count in the shader
 				Buffer* pLightGrid = cullData.pLightGrid->Get();
 				//#todo: adhoc UAV creation
-				context.ClearUAVu(pLightGrid, m_pDevice->CreateUAV(pLightGrid, BufferUAVDesc::CreateRaw()));
+				context.ClearUAVu(m_pDevice->CreateUAV(pLightGrid, BufferUAVDesc::CreateRaw()));
 
 				struct
 				{

@@ -124,15 +124,15 @@ void RGGraph::DumpGraph(const char* pPath) const
 			{
 				const TextureDesc& desc = static_cast<RGTexture*>(pResource)->Desc;
 				stream << "Res: " << desc.Width << "x" << desc.Height << "x" << desc.DepthOrArraySize << "<br/>";
-				stream << "Fmt: " << GetFormatInfo(desc.Format).pName << "<br/>";
+				stream << "Fmt: " << RHI::GetFormatInfo(desc.Format).pName << "<br/>";
 				stream << "Mips: " << desc.Mips << "<br/>";
-				stream << "Size: " << Math::PrettyPrintDataSize(GetFormatByteSize(desc.Format, desc.Width) * desc.Height * desc.DepthOrArraySize) << "</br>";
+				stream << "Size: " << Math::PrettyPrintDataSize(RHI::GetFormatByteSize(desc.Format, desc.Width) * desc.Height * desc.DepthOrArraySize) << "</br>";
 			}
 			else if (pResource->Type == RGResourceType::Buffer)
 			{
 				const BufferDesc& desc = static_cast<RGBuffer*>(pResource)->Desc;
 				stream << "Stride: " << desc.ElementSize << "<br/>";
-				stream << "Fmt: " << GetFormatInfo(desc.Format).pName << "<br/>";
+				stream << "Fmt: " << RHI::GetFormatInfo(desc.Format).pName << "<br/>";
 				stream << "Size: " << Math::PrettyPrintDataSize(desc.Size) << "<br/>";
 				stream << "Elements: " << desc.NumElements() << "<br/>";
 			}
@@ -150,7 +150,7 @@ void RGGraph::DumpGraph(const char* pPath) const
 		};
 
 
-		for (RGPass::ResourceAccess& access : pPass->Accesses)
+		for (RGPass::RGResourceAccess& access : pPass->Accesses)
 		{
 			RGResource* pResource = access.pResource;
 			uint32 resourceVersion = 0;
@@ -167,7 +167,7 @@ void RGGraph::DumpGraph(const char* pPath) const
 
 			if (resourceVersion > 0 || pResource->IsImported)
 			{
-				stream << "Resource" << pResource->ID << "_" << resourceVersion << " -- " << D3D::ResourceStateToString(access.Access) << " --> Pass" << pPass->ID << "\n";
+				stream << "Resource" << pResource->ID << "_" << resourceVersion << " -- " << RHI::ResourceStateToString(access.Access) << " --> Pass" << pPass->ID << "\n";
 				stream << "linkStyle " << linkIndex++ << " " << readLinkStyle << "\n";
 			}
 
@@ -177,7 +177,7 @@ void RGGraph::DumpGraph(const char* pPath) const
 				resourceVersion++;
 				PrintResource(pResource, resourceVersion);
 
-				stream << "Pass" << pPass->ID << " -- " << D3D::ResourceStateToString(access.Access) << " --> " << "Resource" << pResource->ID << "_" << resourceVersion;
+				stream << "Pass" << pPass->ID << " -- " << RHI::ResourceStateToString(access.Access) << " --> " << "Resource" << pResource->ID << "_" << resourceVersion;
 				stream << "\nlinkStyle " << linkIndex++ << " " << writeLinkStyle << "\n";
 			}
 		}

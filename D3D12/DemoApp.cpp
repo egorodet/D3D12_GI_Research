@@ -434,8 +434,8 @@ void DemoApp::Update()
 				D3D12_RESOURCE_DESC resourceDesc = m_ColorOutput->GetResource()->GetDesc();
 				m_pDevice->GetDevice()->GetCopyableFootprints(&resourceDesc, 0, 1, 0, &textureFootprint, nullptr, nullptr, nullptr);
 				RefCountPtr<Buffer> pScreenshotBuffer = m_pDevice->CreateBuffer(BufferDesc::CreateReadback(textureFootprint.Footprint.RowPitch * textureFootprint.Footprint.Height), "Screenshot Texture");
-				pContext->InsertResourceBarrier(m_ColorOutput, D3D12_RESOURCE_STATE_COPY_SOURCE);
-				pContext->InsertResourceBarrier(pScreenshotBuffer, D3D12_RESOURCE_STATE_COPY_DEST);
+				pContext->TextureBarrier(m_ColorOutput, ResourceAccess::CopySrc);
+				pContext->BufferBarrier(pScreenshotBuffer, ResourceAccess::CopyDest);
 				pContext->CopyTexture(m_ColorOutput, pScreenshotBuffer, CD3DX12_BOX(0, 0, m_ColorOutput->GetWidth(), m_ColorOutput->GetHeight()));
 
 				Fence* pFence = m_pDevice->GetFrameFence();
@@ -543,7 +543,7 @@ void DemoApp::Update()
 
 						context.Dispatch(ComputeUtils::GetNumThreadGroups(pSkyTexture->GetWidth(), 16, pSkyTexture->GetHeight(), 16, 6));
 
-						context.InsertResourceBarrier(pSkyTexture, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+						context.TextureBarrier(pSkyTexture, ResourceAccess::SRVGraphics);
 					});
 		}
 		graph.Export(pSky, &pViewMut->pSky);
@@ -923,8 +923,8 @@ void DemoApp::Update()
 						Texture* pColorSource = pDownscaleTarget->Get();
 						Buffer* pHistogram = pLuminanceHistogram->Get();
 
-						context.ClearUAVu(pHistogram, pHistogram->GetUAV());
-						context.InsertUavBarrier(pHistogram);
+						context.ClearUAVu(pHistogram->GetUAV());
+						context.UAVBarrier();
 
 						context.SetComputeRootSignature(m_pCommonRS);
 						context.SetPipelineState(m_pLuminanceHistogramPSO);
@@ -988,8 +988,8 @@ void DemoApp::Update()
 					.Write(pHistogramDebugTexture)
 					.Bind([=](CommandContext& context)
 						{
-							context.ClearUAVf(pHistogramDebugTexture->Get());
-							context.InsertUavBarrier(pHistogramDebugTexture->Get());
+							context.ClearUAVf(pHistogramDebugTexture->Get()->GetUAV());
+							context.UAVBarrier();
 
 							context.SetPipelineState(m_pDrawHistogramPSO);
 							context.SetComputeRootSignature(m_pCommonRS);
@@ -1056,7 +1056,7 @@ void DemoApp::Update()
 							context.BindResources(2, pDownscaleTarget->Get()->GetSubResourceUAV(i));
 							context.BindResources(3, pSourceTexture->Get()->GetSRV());
 							context.Dispatch(ComputeUtils::GetNumThreadGroups(targetDimensions.x, 8, targetDimensions.y, 8));
-							context.InsertUavBarrier();
+							context.UAVBarrier();
 						});
 
 				pSourceTexture = pDownscaleTarget;
@@ -1094,7 +1094,7 @@ void DemoApp::Update()
 								pPreviousSource->Get()->GetSRV(),
 								});
 							context.Dispatch(ComputeUtils::GetNumThreadGroups(targetDimensions.x, 8, targetDimensions.y, 8));
-							context.InsertUavBarrier();
+							context.UAVBarrier();
 						});
 
 				pPreviousSource = pUpscaleTarget;
@@ -1210,7 +1210,7 @@ void DemoApp::Update()
 			.Read(sceneTextures.pColorTarget)
 			.Bind([=](CommandContext& context)
 				{
-					context.InsertResourceBarrier(m_pSwapchain->GetBackBuffer(), D3D12_RESOURCE_STATE_PRESENT);
+					context.TextureBarrier(m_pSwapchain->GetBackBuffer(), ResourceAccess::Present);
 				});
 
 		graph.Compile();

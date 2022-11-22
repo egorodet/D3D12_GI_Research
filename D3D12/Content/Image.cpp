@@ -85,7 +85,7 @@ bool Image::SetData(const void* pData, uint32 offsetInBytes, uint32 sizeInBytes)
 
 bool Image::SetPixel(int x, int y, const Color& color)
 {
-	const FormatInfo& info = GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	if (x + y * m_Width >= (int)m_Pixels.size())
 	{
@@ -101,7 +101,7 @@ bool Image::SetPixel(int x, int y, const Color& color)
 
 bool Image::SetPixelInt(int x, int y, unsigned int color)
 {
-	const FormatInfo& info = GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	if (x + y * m_Width >= (int)m_Pixels.size())
 	{
@@ -117,7 +117,7 @@ bool Image::SetPixelInt(int x, int y, unsigned int color)
 
 Color Image::GetPixel(int x, int y) const
 {
-	const FormatInfo& info = GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	Color c = {};
 	if (x + y * m_Width >= (int)m_Pixels.size())
@@ -134,7 +134,7 @@ Color Image::GetPixel(int x, int y) const
 
 unsigned int Image::GetPixelInt(int x, int y) const
 {
-	const FormatInfo& info = GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	unsigned int c = 0;
 	if (x + y * m_Width >= (int)m_Pixels.size())

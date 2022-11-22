@@ -125,14 +125,18 @@ struct RenderPassInfo
 class ResourceBarrierBatcher
 {
 public:
-	void AddTransition(ID3D12Resource* pResource, D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState, uint32 subResource);
-	void AddUAV(ID3D12Resource* pResource);
-	void Flush(ID3D12GraphicsCommandList* pCmdList);
+	void BufferBarrier(ID3D12Resource* pResource, ResourceAccess beforeState, ResourceAccess afterState);
+	void TextureBarrier(ID3D12Resource* pResource, ResourceAccess beforeState, ResourceAccess afterState, uint32 subResource);
+	void GlobalBarrier();
+	void Flush(ID3D12GraphicsCommandList7* pCmdList);
 	void Reset();
-	bool HasWork() const { return m_QueuedBarriers.size() > 0; }
+	bool HasWork() const { return !m_BufferBarriers.empty() || !m_TextureBarriers.empty() || !m_GlobalBarriers.empty(); }
 
 private:
-	std::vector<D3D12_RESOURCE_BARRIER> m_QueuedBarriers;
+	std::vector<D3D12_BUFFER_BARRIER> m_BufferBarriers;
+	std::vector<D3D12_TEXTURE_BARRIER> m_TextureBarriers;
+	std::vector<D3D12_GLOBAL_BARRIER> m_GlobalBarriers;
+	std::array<D3D12_BARRIER_GROUP, 3> m_BarrierGroups;
 };
 
 namespace ComputeUtils
@@ -166,8 +170,10 @@ public:
 	static SyncPoint Execute(const Span<CommandContext* const>& contexts, bool wait);
 	void Free(const SyncPoint& syncPoint);
 
-	void InsertResourceBarrier(GraphicsResource* pBuffer, D3D12_RESOURCE_STATES state, uint32 subResource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-	void InsertUavBarrier(const GraphicsResource* pBuffer = nullptr);
+	void BufferBarrier(Buffer* pBuffer, ResourceAccess state);
+	void TextureBarrier(Texture* pTexture, ResourceAccess state, uint32 subResource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void UAVBarrier();
+
 	void FlushResourceBarriers();
 
 	void CopyResource(const GraphicsResource* pSource, const GraphicsResource* pTarget);
@@ -193,8 +199,9 @@ public:
 	void BeginRenderPass(const RenderPassInfo& renderPassInfo);
 	void EndRenderPass();
 
-	void ClearUAVu(const GraphicsResource* pBuffer, const UnorderedAccessView* pUav = nullptr, const Vector4u& values = Vector4u::Zero());
-	void ClearUAVf(const GraphicsResource* pBuffer, const UnorderedAccessView* pUav = nullptr, const Vector4& values = Vector4::Zero);
+	void ClearUAVu(UnorderedAccessView* pUAV, const Vector4u& values = Vector4u::Zero());
+	void ClearUAVf(UnorderedAccessView* pUAV, const Vector4& values = Vector4::Zero);
+	void ClearUAV(UnorderedAccessView* pUAV, const void* pValues, bool isFloat);
 
 	void SetPipelineState(PipelineState* pPipelineState);
 	void SetPipelineState(StateObject* pStateObject);
@@ -233,8 +240,7 @@ public:
 
 	DynamicAllocation AllocateTransientMemory(uint64 size, uint32 alignment = 256u);
 
-	ID3D12GraphicsCommandList* GetCommandList() const { return m_pCommandList; }
-	ID3D12GraphicsCommandList4* GetRaytracingCommandList() const { return  m_pRaytracingCommandList.Get(); }
+	ID3D12GraphicsCommandList7* GetCommandList() const { return m_pCommandList; }
 
 	D3D12_COMMAND_LIST_TYPE GetType() const { return m_Type; }
 	const PipelineState* GetCurrentPSO() const { return m_pCurrentPSO; }
@@ -243,8 +249,7 @@ public:
 private:
 	void PrepareDraw();
 
-	static bool IsTransitionAllowed(D3D12_COMMAND_LIST_TYPE commandlistType, D3D12_RESOURCE_STATES state);
-	D3D12_RESOURCE_STATES GetLocalResourceState(GraphicsResource* pResource, uint32 subResource) const
+	ResourceAccess GetLocalResourceState(GraphicsResource* pResource, uint32 subResource) const
 	{
 		auto it = m_ResourceStates.find(pResource);
 		check(it != m_ResourceStates.end());
@@ -252,6 +257,13 @@ private:
 	}
 	struct PendingBarrier
 	{
+		enum class Type
+		{
+			Texture,
+			Buffer,
+		};
+
+		Type Type;
 		GraphicsResource* pResource;
 		ResourceState State;
 		uint32 Subresource;
@@ -262,9 +274,7 @@ private:
 	ResourceBarrierBatcher m_BarrierBatcher;
 	std::unique_ptr<DynamicResourceAllocator> m_pDynamicAllocator;
 	RefCountPtr<ID3D12CommandList> m_pCommandListBase;
-	RefCountPtr<ID3D12GraphicsCommandList> m_pCommandList;
-	RefCountPtr<ID3D12GraphicsCommandList4> m_pRaytracingCommandList;
-	RefCountPtr<ID3D12GraphicsCommandList6> m_pMeshShadingCommandList;
+	RefCountPtr<ID3D12GraphicsCommandList7> m_pCommandList;
 	RefCountPtr<ID3D12CommandAllocator> m_pAllocator;
 	D3D12_COMMAND_LIST_TYPE m_Type;
 	std::unordered_map<GraphicsResource*, ResourceState> m_ResourceStates;

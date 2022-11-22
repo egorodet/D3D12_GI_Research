@@ -80,7 +80,7 @@ void TiledForward::ComputeLightCulling(RGGraph& graph, const SceneView* pView, S
 				Texture* pDepth = sceneTextures.pDepth->Get();
 
 				//#todo: adhoc UAV creation
-				context.ClearUAVu(resources.pLightIndexCounter->Get(), m_pDevice->CreateUAV(resources.pLightIndexCounter->Get(), BufferUAVDesc::CreateRaw()));
+				context.ClearUAVu(m_pDevice->CreateUAV(resources.pLightIndexCounter->Get(), BufferUAVDesc::CreateRaw()));
 
 				context.SetComputeRootSignature(m_pCommonRS);
 				context.SetPipelineState(m_pComputeLightCullPSO);
