@@ -69,7 +69,7 @@ public:
 	const Image* GetNextImage() const { return m_pNextImage.get(); }
 
 	static int32 GetNumChannels(ImageFormat format);
-	static ResourceFormat TextureFormatFromCompressionFormat(const ImageFormat& format, bool sRgb);
+	static ResourceFormat TextureFormatFromCompressionFormat(const ImageFormat& format);
 
 private:
 	bool LoadDDS(const void* pBytes, uint32 numBytes);

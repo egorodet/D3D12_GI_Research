@@ -25,8 +25,6 @@ static constexpr FormatInfo sFormatInfo[] = {
     { ResourceFormat::RGBA8_UNORM,       "RGBA8_UNORM",       4,   1, FormatType::Normalized,   4, false, false, false, false, false },
     { ResourceFormat::RGBA8_SNORM,		 "RGBA8_SNORM",       4,   1, FormatType::Normalized,   4, false, false, false, false, false },
     { ResourceFormat::BGRA8_UNORM,       "BGRA8_UNORM",       4,   1, FormatType::Normalized,   4, false, false, false, false, false },
-    { ResourceFormat::RGBA8_UNORM_SRGB,  "SRGBA8_UNORM_SRGB", 4,   1, FormatType::Normalized,   4, false, false, false, true , false },
-    { ResourceFormat::BGRA8_UNORM_SRGB,  "SBGRA8_UNORM_SRGB", 4,   1, FormatType::Normalized,   4, false, false, false, false, false },
     { ResourceFormat::RGB10A2_UNORM,	 "R10GBA2_UNORM", 	  4,   1, FormatType::Normalized,   4, false, false, false, false, false },
     { ResourceFormat::R11G11B10_FLOAT,   "R11G11B10_FLOAT",   4,   1, FormatType::Float,        3, false, false, false, false, false },
     { ResourceFormat::RG16_UINT,         "RG16_UINT",         4,   1, FormatType::Integer,      2, false, false, false, false, false },
@@ -53,11 +51,8 @@ static constexpr FormatInfo sFormatInfo[] = {
     { ResourceFormat::RGBA32_FLOAT,      "RGBA32_FLOAT",      16,  1, FormatType::Float,        4, false, false, true,  false, false },
     
     { ResourceFormat::BC1_UNORM,         "BC1_UNORM",         8,   4, FormatType::Normalized,   3, false, false, false, false, true  },
-    { ResourceFormat::BC1_UNORM_SRGB,    "BC1_UNORM_SRGB",    8,   4, FormatType::Normalized,   3, false, false, false, true,  true  },
     { ResourceFormat::BC2_UNORM,         "BC2_UNORM",         16,  4, FormatType::Normalized,   4, false, false, false, false, true  },
-    { ResourceFormat::BC2_UNORM_SRGB,    "BC2_UNORM_SRGB",    16,  4, FormatType::Normalized,   4, false, false, false, true,  true  },
     { ResourceFormat::BC3_UNORM,         "BC3_UNORM",         16,  4, FormatType::Normalized,   4, false, false, false, false, true  },
-    { ResourceFormat::BC3_UNORM_SRGB,    "BC3_UNORM_SRGB",    16,  4, FormatType::Normalized,   4, false, false, false, true,  true  },
     { ResourceFormat::BC4_UNORM,         "BC4_UNORM",         8,   4, FormatType::Normalized,   1, false, false, false, false, true  },
     { ResourceFormat::BC4_SNORM,         "BC4_SNORM",         8,   4, FormatType::Normalized,   1, false, false, false, false, true  },
     { ResourceFormat::BC5_UNORM,         "BC5_UNORM",         16,  4, FormatType::Normalized,   2, false, false, false, false, true  },
@@ -65,7 +60,6 @@ static constexpr FormatInfo sFormatInfo[] = {
     { ResourceFormat::BC6H_UFLOAT,       "BC6H_UFLOAT",       16,  4, FormatType::Float,        3, false, false, false, false, true  },
     { ResourceFormat::BC6H_SFLOAT,       "BC6H_SFLOAT",       16,  4, FormatType::Float,        3, false, false, true,  false, true  },
     { ResourceFormat::BC7_UNORM,         "BC7_UNORM",         16,  4, FormatType::Normalized,   4, false, false, false, false, true  },
-    { ResourceFormat::BC7_UNORM_SRGB,    "BC7_UNORM_SRGB",    16,  4, FormatType::Normalized,   4, false, false, false, true,  true  },
 
 	{ ResourceFormat::D16_UNORM,         "D16_UNORM",         2,   1, FormatType::DepthStencil, 1, true,  false, false, false, false },
 	{ ResourceFormat::D32_FLOAT,         "D32",               4,   1, FormatType::DepthStencil, 1, true,  false, false, false, false },

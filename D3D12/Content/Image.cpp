@@ -85,7 +85,7 @@ bool Image::SetData(const void* pData, uint32 offsetInBytes, uint32 sizeInBytes)
 
 bool Image::SetPixel(int x, int y, const Color& color)
 {
-	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	if (x + y * m_Width >= (int)m_Pixels.size())
 	{
@@ -101,7 +101,7 @@ bool Image::SetPixel(int x, int y, const Color& color)
 
 bool Image::SetPixelInt(int x, int y, unsigned int color)
 {
-	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	if (x + y * m_Width >= (int)m_Pixels.size())
 	{
@@ -117,7 +117,7 @@ bool Image::SetPixelInt(int x, int y, unsigned int color)
 
 Color Image::GetPixel(int x, int y) const
 {
-	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	Color c = {};
 	if (x + y * m_Width >= (int)m_Pixels.size())
@@ -134,7 +134,7 @@ Color Image::GetPixel(int x, int y) const
 
 unsigned int Image::GetPixelInt(int x, int y) const
 {
-	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format, m_sRgb));
+	const FormatInfo& info = RHI::GetFormatInfo(TextureFormatFromCompressionFormat(m_Format));
 	checkf(!info.IsBC, "Can't get pixel data from block compressed texture");
 	unsigned int c = 0;
 	if (x + y * m_Width >= (int)m_Pixels.size())
@@ -203,23 +203,23 @@ bool Image::GetSurfaceInfo(int width, int height, int depth, int mipLevel, MipLe
 	return true;
 }
 
-ResourceFormat Image::TextureFormatFromCompressionFormat(const ImageFormat& format, bool sRgb)
+ResourceFormat Image::TextureFormatFromCompressionFormat(const ImageFormat& format)
 {
 	switch (format)
 	{
-	case ImageFormat::RGBA:		return sRgb ? ResourceFormat::RGBA8_UNORM_SRGB : ResourceFormat::RGBA8_UNORM;
-	case ImageFormat::BGRA:		return sRgb ? ResourceFormat::BGRA8_UNORM_SRGB : ResourceFormat::BGRA8_UNORM;
+	case ImageFormat::RGBA:		return ResourceFormat::RGBA8_UNORM;
+	case ImageFormat::BGRA:		return ResourceFormat::BGRA8_UNORM;
 	case ImageFormat::RGB32:	return ResourceFormat::RGB32_FLOAT;
 	case ImageFormat::RGBA16:	return ResourceFormat::RGBA16_FLOAT;
 	case ImageFormat::RGBA32:	return ResourceFormat::RGBA32_FLOAT;
 	case ImageFormat::RG32:		return ResourceFormat::RG32_FLOAT;
-	case ImageFormat::BC1:		return sRgb ? ResourceFormat::BC1_UNORM_SRGB : ResourceFormat::BC1_UNORM;
-	case ImageFormat::BC2:		return sRgb ? ResourceFormat::BC2_UNORM_SRGB : ResourceFormat::BC2_UNORM;
-	case ImageFormat::BC3:		return sRgb ? ResourceFormat::BC3_UNORM_SRGB : ResourceFormat::BC3_UNORM;
+	case ImageFormat::BC1:		return ResourceFormat::BC1_UNORM;
+	case ImageFormat::BC2:		return ResourceFormat::BC2_UNORM;
+	case ImageFormat::BC3:		return ResourceFormat::BC3_UNORM;
 	case ImageFormat::BC4:		return ResourceFormat::BC4_UNORM;
 	case ImageFormat::BC5:		return ResourceFormat::BC5_UNORM;
 	case ImageFormat::BC6H:		return ResourceFormat::BC6H_UFLOAT;
-	case ImageFormat::BC7:		return sRgb ? ResourceFormat::BC7_UNORM_SRGB : ResourceFormat::BC7_UNORM;
+	case ImageFormat::BC7:		return ResourceFormat::BC7_UNORM;
 	default:
 		noEntry();
 		return ResourceFormat::Unknown;

@@ -382,7 +382,7 @@ namespace GraphicsCommon
 		TextureDesc desc;
 		desc.Width = image.GetWidth();
 		desc.Height = image.GetHeight();
-		desc.Format = Image::TextureFormatFromCompressionFormat(image.GetFormat(), sRGB);
+		desc.Format = Image::TextureFormatFromCompressionFormat(image.GetFormat());
 		desc.Mips = image.GetMipLevels();
 		desc.Usage = TextureFlag::ShaderResource;
 		desc.Dimensions = image.IsCubemap() ? TextureDimension::TextureCube : TextureDimension::Texture2D;
