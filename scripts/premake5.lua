@@ -126,6 +126,8 @@ workspace (ENGINE_NAME)
 		-- DirectXMath
 		includedirs "$(SolutionDir)Libraries/DirectXMath/include"
 
+		runtimeDependency ("Warp/d3d10warp.dll", "")
+
 
 newaction {
 	trigger     = "clean",

@@ -334,8 +334,8 @@ GraphicsDevice::GraphicsDevice(GraphicsDeviceOptions options)
 		m_pFactory->EnumWarpAdapter(IID_PPV_ARGS(pAdapter.GetAddressOf()));
 	}
 
-	VERIFY_HR(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(m_pDevice.ReleaseAndGetAddressOf())));
-	check(m_pDevice.As(&m_pDevice));
+	VERIFY_HR(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(pDevice.ReleaseAndGetAddressOf())));
+	check(pDevice.As(&m_pDevice));
 	D3D::SetObjectName(m_pDevice.Get(), "Main Device");
 
 	m_Capabilities.Initialize(this);
